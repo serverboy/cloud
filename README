@@ -1,0 +1,15 @@
+Serverboy Cloud
+Version 0.3
+
+Cloud is a simple DB abstraction layer that makes it really easy to create
+awesome data-driven PHP apps in the least amount of time.
+
+
+How to use:
+
+Cloud is not dissimilar in nature to an ORM, in so far as it allows the you to
+interact directly with records in the database as if they were objects. Unlike
+an ORM, however, records are amorphous: they do not have a model to adhere to.
+Rather than follow a model, the records are stored in what are called "tokens."
+
+More docs to come.
