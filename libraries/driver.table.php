@@ -25,7 +25,6 @@
  * 
  */
 
-define('FETCH_RESULT', 0); // A result object
 define('FETCH_COUNT', 1); // An integer count
 define('FETCH_ARRAY', 2); // An array of values from the database
 define('FETCH_SINGLE_ARRAY', 3); // A single array of values from a row in the database
@@ -38,24 +37,18 @@ define('FETCH_SINGLE', 8); // A single value
 interface cloud_driver_table {
 	
 	public function __construct($connection, $driver, $name);
-	public function destroy();
 	
 	
 	public function get_driver();
 	
 	public function get_columns();
 	public function get_primary_column();
-	public function create_column($position, $column);
-	public function delete_column($name);
 	
 	public function get_length(); // To return an integer row count
 	
 	// $id should be the primary key for the row
 	// Functions should return the token for the row
-	public function insert_row($id, $values);
-	public function upsert_row($id, $values);
-	public function update_row($id, $values);
-	public function delete_row($id);
+	public function insert($values);
 	
 	// Safety first...default to False
 	public function update($conditions = false, $values = '', $limit = -1, $order = '');

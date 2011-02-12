@@ -24,14 +24,14 @@
  * 
  */
 
-abstract class cloud_driver extends cloud_base {
+abstract class cloud_driver {
 	
 	private $hasInit = false; // Should be set to true on init
+	private $credentials;
 	
 	// Constructors and Destructors
 	public function __construct($credentials) {
-		// Securely stuff away our credentials
-		self::readonly('credentials', $credentials);
+		$this->credentials = $credentials;
 		// Initialize the database driver
 		
 		return $this->init($credentials);
@@ -47,15 +47,9 @@ abstract class cloud_driver extends cloud_base {
 	
 	
 	// Table functions
-	abstract public function create_table($name, $columns);
 	abstract public function get_table_list();
 	abstract public function get_table($name);
-	public function delete_table($name) {
-		// Retrieve the table to delete
-		$table = $this->get_table($name);
-		// Destroy it
-		$table->destroy();
-	}
+	public function table($name) {return $this->get_table($name);} // Simple alias
 	
 	
 	// Security Functions
@@ -87,10 +81,12 @@ abstract class cloud_driver extends cloud_base {
 		}
 	}
 	abstract public function escapeBool($data); // There should never be quotes with boolean
-	abstract public function escapeString($data, $no_quotes = false);
-	abstract public function escapeInteger($data, $no_quotes = false);
-	abstract public function escapeFloat($data, $no_quotes = false); // Helps out with number padding
-	abstract public function escapeArray($data, $type = 0, $no_quotes = false); // Helps with delimited values
+	abstract public function escapeString($data);
+	abstract public function escapeInteger($data);
+	abstract public function escapeFloat($data); // Helps out with number padding
+	
+	abstract public function escapeList($array); // A list of tokens (i.e.: x, y, z)
+	abstract public function escapeValueList($array); // A list of tokens (i.e.: "x", 2, 'z')
 	/*
 		Escape Array Types:
 		- 0 :	Nondelimited
@@ -98,7 +94,7 @@ abstract class cloud_driver extends cloud_base {
 		- 2 :	Comparison
 	*/
 	
-	abstract public function prepareSimpleToken($token, $no_quotes = false);
+	abstract public function prepareSimpleToken($token);
 	abstract public function prepareCombinator($combinator);
 	abstract public function prepareComparison($comparison);
 	abstract public function prepareListOrder($listorder);
