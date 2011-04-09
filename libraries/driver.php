@@ -99,5 +99,4 @@ abstract class cloud_driver {
 	abstract public function prepareComparison($comparison);
 	abstract public function prepareListOrder($listorder);
 	
-	
 }

@@ -6,7 +6,7 @@
  *
  * PHP version 5
  *
- * Copyright 2010 Matt Basta
+ * Copyright 2011 Matt Basta
  * 
  * @author     Matt Basta <matt@serverboy.net>
  * 
@@ -24,20 +24,27 @@
  * 
  */
 
-class cloud_column extends cloud_base {
+class cloud_column {
+
+	private $name;
+	private $type;
+	private $length;
+	private $key;
+	private $_default;
+	private $extra;
+
 	public function __construct($name, $type, $length = 0, $key = '', $default = '', $extra = '') {
-		// Store the objects securely
-		self::readOnly('name', $name);
-		self::readOnly('type', $type);
-		self::readOnly('length', $length);
-		self::readOnly('key', $key);
-		self::readOnly('default', $default);
-		self::readOnly('extra', $extra);
+		$this->name = $name;
+		$this->type = $type;
+		$this->length = $length;
+		$this->key = $key;
+		$this->_default = $default;
+		$this->extra = $extra;
 	}
 	
 	public function __get($name) {
 		if($name == 'def')
 			$name = 'default';
-		return self::readOnly($name);
+		return $this->name;
 	}
 }

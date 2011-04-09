@@ -7,7 +7,7 @@
  *
  * PHP version 5
  *
- * Copyright 2010 Matt Basta
+ * Copyright 2011 Matt Basta
  * 
  * @author     Matt Basta <matt@serverboy.net>
  * 
@@ -38,7 +38,6 @@ interface cloud_driver_table {
 	
 	public function __construct($connection, $driver, $name);
 	
-	
 	public function get_driver();
 	
 	public function get_columns();
@@ -46,15 +45,13 @@ interface cloud_driver_table {
 	
 	public function get_length(); // To return an integer row count
 	
-	// $id should be the primary key for the row
 	// Functions should return the token for the row
 	public function insert($values);
 	
 	// Safety first...default to False
-	public function update($conditions = false, $values = '', $limit = -1, $order = '');
-	public function delete($conditions = false, $limit = -1, $order = '');
+	public function update($conditions, $values, $limit = -1, $order = '');
+	public function delete($conditions, $limit = -1, $order = '');
 	
-	// The pseudocolumn "_primary_key" should be used to denote the primary key
 	/*
 	Params
 		- Columns
@@ -63,8 +60,8 @@ interface cloud_driver_table {
 		- Order
 		- Array ID (Expects column name)
 	*/
-	public function fetch($conditions = '', $return = 0, $params = '');
-	public function fetch_exists($conditions = '');
+	public function fetch($conditions, $return = 0, $params = '');
+	public function fetch_exists($conditions);
 	
 	// Improve performance by sending write operations as a single transaction
 	public function start_write_transaction();
