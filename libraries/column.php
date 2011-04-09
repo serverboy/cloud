@@ -43,8 +43,8 @@ class cloud_column {
 	}
 	
 	public function __get($name) {
-		if($name == 'def')
-			$name = 'default';
-		return $this->name;
+		if($name == "default")
+			$name = "_default";
+		return $this->$name;
 	}
 }

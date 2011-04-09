@@ -67,6 +67,8 @@ abstract class cloud_driver {
 				return $this->escapeList($data);
 			case is_object($data):
 				switch(true) {
+					case $data instanceof cloud_column:
+						return $this->prepareSimpleToken($data->name);
 					case $data instanceof simpleToken:
 						return $this->prepareSimpleToken($data);
 					case $data instanceof logicCombinator:

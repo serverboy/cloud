@@ -6,7 +6,7 @@
  *
  * PHP version 5
  *
- * Copyright 2010 Matt Basta
+ * Copyright 2011 Matt Basta
  * 
  * @author     Matt Basta <matt@serverboy.net>
  * 
@@ -25,11 +25,9 @@
  */
 
 class mysql_driver extends cloud_driver {
-	
 	private $connection;
 	
 	public function init($credentials) {
-		
 		// Connect
 		$connection = new mysqli($credentials['server'], $credentials['username'], $credentials['password']);
 		
@@ -39,7 +37,6 @@ class mysql_driver extends cloud_driver {
 		
 		// Store the connection
 		$this->connection = $connection;
-		
 	}
 	public function close() {
 		@$this->connection->close();
@@ -55,91 +52,53 @@ class mysql_driver extends cloud_driver {
 		
 		return $tab_out;
 	}
+	
 	public function get_table($name) {
-		// TODO : Check for existance.
 		return new mysql_driver_table($this->connection, $this, $name);
 	}
 	
 	
 	public function escapeBool($data) {return $data ? 1 : 0;}
 	public function escapeString($data) {
-		
-		if(empty($data))
-			return $no_quotes ? '' : '""';
-		
-		return $no_quotes ? $data : '"' . $this->connection->real_escape_string($data) . '"';
+		return '"' . $this->connection->real_escape_string($data) . '"';
 	}
 	public function escapeInteger($data) {return (int)$data;}
 	public function escapeFloat($data) {return (float)$data;}
-	/*
-		Escape Array Types:
-		- 0 :	Nondelimited
-		- 1 :	Delimited
-		- 2 :	Comparison
-	public function escapeArray($data, $type = 0, $no_quotes = false) {
-		if(!is_array($data))
-			return $this->escape($data, $no_quotes);
-		
-		switch($type) {
-			case 0:
-				$delimiter = ' ';
-				break;
-			case 1:
-				$delimiter = ', ';
-				break;
-			case 2:
-				$delimiter = ' AND ';
-				break;
-		}
+	
+	public function escapeList($array, $commas = true, $escape = true) {
+		if(!is_array($array))
+			return $escape ? $this->escape($array) : $array;
 		
 		$final = array();
-		foreach($data as $key => $value) {
-			$build = '';
-			$orig_type = gettype($value);
-			
-			if(is_string($value))
-				$value = trim($value);
-			
-			$value = $this->escape($value, $no_quotes);
-			
-			switch($type) {
-				case 1:
-				case 0:
-					
-					if(is_string($key))
-						$build = "{$this->prepareSimpleToken($key)} = $value";
-					else
-						$build = $value;
-					break;
-				case 2:
-					switch($orig_type) {
-						case 'integer':
-						case 'string':
-						case 'double':
-						case 'float':
-						case 'boolean':
-							if(is_string($key)) {
-								if(!empty($this->primary_key) && $key == '_primary_key')
-									$key = $this->primary_key;
-								$build = "{$this->prepareSimpleToken($key)} = $value";
-							} else
-								$build = 'TRUE';
-							break;
-						case 'array':
-						case 'object':
-							$build = $value;
-					}
-					break;
+		for($array as $key=>$item) {
+			$build = $escape ? $this->escape($item) : $item;
+			if(is_string($key))
+				$final[] = $this->prepareSimpleToken($key) . " = " . $build;
+			else
+				$final[] = $build;
+		}
+		return implode($commas ? ", " : " ", $final);
+	}
+	
+	public function escapeConditions($array) {
+		if(!is_array($array))
+			return $this->escape($array); # We can force this for conditions
+		
+		$final = array();
+		for($array as $key=>$item) {
+			if(is_object($item)) {
+				$final[] = $this->escape($item);
+				continue;
 			}
 			
-			$final[] = $build;
-			
+			if(is_string($key))
+				$final[] = $this->prepareSimpleToken($key) . " = " . $this->escape($item);
+			elseif(is_array($item))
+				$final[] = $this->escapeConditions($item);
 		}
-		
-		return implode($delimiter, $final);
-		
+		return implode(" AND ", $final);
 	}
-	*/
+	
 	public function prepareSimpleToken($token) {
 		if($token instanceof simpleToken)
 			$tokentext = $token->getToken();
@@ -151,6 +110,7 @@ class mysql_driver extends cloud_driver {
 		$tokentext = '`' . str_replace('`', "'", $tokentext) . '`';
 		return $tokentext;
 	}
+	
 	public function prepareCombinator($combinator) {
 		$logic = strtoupper($combinator->getLogic());
 		$terms = $combinator->getTerms();
@@ -184,20 +144,21 @@ class mysql_driver extends cloud_driver {
 						
 					$backtrace = debug_backtrace(true);
 					$caller = $backtrace[ min(count($backtrace), 2) ]['function'];
-					if($caller == 'prepareCombinator' || $caller == 'escapeArray')
+					if($caller == 'prepareCombinator' || $caller == 'escapeConditions')
 						return '(' . implode(" $logic ", $build) . ')';
 					else
 						return implode(" $logic ", $build);
 			}
 		}
 	}
+	
 	public function prepareComparison($comparison) {
 		return "{$this->escape($comparison->getObject1())} {$comparison->getOperation()} {$this->escape($comparison->getObject2())}";
 	}
+	
 	public function prepareListOrder($listorder) {
 		return $this->prepareSimpleToken($listorder->getVariable()) . ' ' . $listorder->getOrder();
 	}
-	
 }
 
 
@@ -222,7 +183,7 @@ class mysql_driver_table implements cloud_driver_table {
 	
 	public function get_columns() {
 		
-		if($columns) return $this->column_cache;
+		if($this->column_cache) return $this->column_cache;
 		
 		$query = $this->connection->query('DESCRIBE ' . $this->driver->prepareSimpleToken($this->name) . ';');
 		
@@ -258,7 +219,7 @@ class mysql_driver_table implements cloud_driver_table {
 	}
 	
 	public function get_length() {
-		$vana=ini_set('mysql.trace_mode','Off');
+		$vana = ini_set('mysql.trace_mode','Off');
 		
 		$temp = $this->connection->query("SELECT SQL_CALC_FOUND_ROWS * FROM {$this->driver->prepareSimpleToken($this->name)} LIMIT 1");
 		$result = $this->connection->query("SELECT FOUND_ROWS()");
@@ -275,32 +236,29 @@ class mysql_driver_table implements cloud_driver_table {
 		$keys = array_keys($values);
 		$values = array_values($values);
 		
-		//$keycount = count($keys);
-		foreach($keys as &$key) {
+		foreach($keys as &$key)
 			$key = cloud::_st((string)$key);
-		}
 		
-		$query = "INSERT INTO {$driver->prepareSimpleToken($this->name)} ({$driver->escapeArray($keys, 1)}) VALUES ({$driver->escapeArray($values, 1)});";
-		#echo $query;
+		$query = "INSERT INTO {$driver->prepareSimpleToken($this->name)} ({$driver->escapeList($keys)}) VALUES ({$driver->escapeList($values)});";
 		$query = $this->connection->query($query);
 		
 		return $this->connection->insert_id;
 		
 	}
 	
-	public function update($conditions = false, $values = '', $limit = -1, $order = '') {
+	public function update($conditions, $values, $limit = -1, $order = '') {
 		
 		if(empty($conditions))
 			return false;
 		
 		$driver = $this->driver;
 		
-		$query = "UPDATE {$driver->prepareSimpleToken($this->name)} SET " . $driver->escapeArray($values, 1);
+		$query = "UPDATE {$driver->prepareSimpleToken($this->name)} SET " . $driver->escapeList($values);
 		if($conditions !== true)
-			$query .= " WHERE " . $driver->escapeArray($conditions, 2);
+			$query .= " WHERE " . $driver->escapeConditions($conditions);
 		
 		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeArray($order, 1)}";
+			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
 		if($limit > -1) {
 			$limit = (int)$limit;
@@ -312,13 +270,13 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		
 	}
-	public function delete($conditions = false, $limit = -1, $order = '') {
+	public function delete($conditions, $limit = -1, $order = '') {
 		$driver = $this->driver;
 		
-		$query = "DELETE FROM {$driver->prepareSimpleToken($this->name)} WHERE " . $driver->escapeArray($conditions, 2);
+		$query = "DELETE FROM {$driver->prepareSimpleToken($this->name)} WHERE " . $driver->escapeConditions($conditions);
 		
 		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeArray($order, 1)}";
+			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
 		if($limit > -1) {
 			$limit = (int)$limit;
@@ -330,15 +288,7 @@ class mysql_driver_table implements cloud_driver_table {
 		
 	}
 	
-	/*
-	Params
-		- Columns
-		- Limit
-		- Offset
-		- Order
-		- Array ID (Expects column name)
-	*/
-	public function fetch($conditions = '', $return = 0, $params = '') {
+	public function fetch($conditions, $return, $params = '') {
 		$driver = $this->driver;
 		
 		// Tell the driver what the primary key is so we can escape it out
@@ -347,61 +297,50 @@ class mysql_driver_table implements cloud_driver_table {
 		if(!is_array($params))
 			$params = array();
 		$columns = isset($params['columns']) ? $params['columns'] : '*';
-		$limit = isset($params['limit']) ? $params['limit'] : -1;
-		$offset = isset($params['offset']) ? $params['offset'] : 0;
+		$limit = isset($params['limit']) ? (int)$params['limit'] : -1;
+		$offset = isset($params['offset']) ? (int)$params['offset'] : 0;
 		$order = isset($params['order']) ? $params['order'] : '';
 		$arrid = isset($params['arrayid']) ? $params['arrayid'] : "id";
 		
-		if($return == 6 || $return == 7) { // Unloaded tokens don't need any values.
-			$columns = new simpleToken('_primary_key');
-			$columns = $driver->prepareSimpleToken($columns);
+		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN) { // Unloaded tokens don't need any values.
+			$columns = $driver->escape($pcol);
 		} else {
 			if(is_array($columns)) {
-				if($return == 8) {
-					if(count($columns) > 8)
+				if($return == FETCH_SINGLE) {
+					if(count($columns) > 1)
 						$columns = $columns[0];
 					if(!($columns instanceof simpleToken))
 						$columns = cloud::_st($columns);
-					cloud_logging::warning("FETCH_SINGLE command passed with multiple parameters.");
 				} else {
-					foreach($columns as $key => &$value) {
-						if(	$value === '_primary_key' ||
-							($value instanceof simpleToken && $value->getToken() == '_primary_key')) {
-							$columns[$key] = $pcol->name;
-							continue;
-						}
+					foreach($columns as $key => &$value)
 						if(is_string($value))
 							$value = cloud::_st($value);
-					}
 					if(!in_array($pcol->name, $columns))
 						$columns[] = cloud::_st($pcol->name);
 				}
 			} elseif(is_string($columns) && $columns != '*')
 				$columns = cloud::_st($columns);
 			if(!is_string($columns))
-				$columns = $driver->escapeArray($columns, 1);
+				$columns = $driver->escapeList($columns);
 		}
 		
 		$query = "SELECT $columns FROM {$driver->prepareSimpleToken($this->name)}";
 		if(!empty($conditions))
-			$query .= " WHERE {$driver->escapeArray($conditions, 2)}";
+			$query .= " WHERE {$driver->escapeConditions($conditions)}";
 		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeArray($order, 1)}";
+			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
-		if($return == 3 || $return == 5 || $return == 7 || $return == 8)
+		if($return == FETCH_SINGLE_ARRAY || $return == FETCH_SINGLE_TOKEN ||
+		   $return == FETCH_SINGLE_UNLOADED_TOKEN || $return == FETCH_SINGLE)
 			$limit = 1;
 		
 		if($limit > -1 || $offset > 0) {
 			if($limit == -1) // As per the MySQL docs, use a REALLY BIG NUMBER!
 				$limit = '18446744073709551615';
-			else
-				$limit = (int)$limit;
 			
 			$query .= " LIMIT $limit";
-			if($offset > 0) {
-				$offset = (int)$offset;
-				$query .= " OFFSET {$offset}";
-			}
+			if($offset > 0)
+				$query .= " OFFSET $offset";
 		}
 		
 		$query .= ';';
@@ -418,7 +357,6 @@ class mysql_driver_table implements cloud_driver_table {
 		if($return > 1)
 			if($result === false || $result->num_rows == 0)
 				return false;
-		
 		
 		switch($return) {
 			case FETCH_COUNT: // Row count
@@ -442,7 +380,7 @@ class mysql_driver_table implements cloud_driver_table {
 						$this,
 						$pcol->name,
 						$row[$pcol->name],
-						$return == 4 ? $row : ''
+						$return == FETCH_TOKENS ? $row : ''
 					);
 				}
 				break;
@@ -455,7 +393,7 @@ class mysql_driver_table implements cloud_driver_table {
 					$this,
 					$pcol->name,
 					$row[$pcol->name],
-					$return == 5 ? $row : ''
+					$return == FETCH_SINGLE_TOKEN ? $row : ''
 				);
 				break;
 			case FETCH_SINGLE: // Single Value
@@ -465,7 +403,6 @@ class mysql_driver_table implements cloud_driver_table {
 		}
 		
 		return $output;
-		
 	}
 	
 	public function fetch_exists($conditions = '') {
