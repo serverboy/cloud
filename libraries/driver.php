@@ -6,7 +6,7 @@
  *
  * PHP version 5
  *
- * Copyright 2010 Matt Basta
+ * Copyright 2011 Matt Basta
  * 
  * @author     Matt Basta <matt@serverboy.net>
  * 
@@ -53,22 +53,22 @@ abstract class cloud_driver {
 	
 	
 	// Security Functions
-	public function escape($data, $no_quotes = false) {
+	public function escape($data) {
 		switch(true) {
 			case is_integer($data):
-				return $this->escapeInteger($data, $no_quotes);
+				return $this->escapeInteger($data);
 			case is_float($data):
-				return $this->escapeFloat($data, $no_quotes);
+				return $this->escapeFloat($data);
 			case is_string($data):
-				return $this->escapeString($data, $no_quotes);
+				return $this->escapeString($data);
 			case is_bool($data):
 				return $this->escapeBool($data);
 			case is_array($data):
-				return $this->escapeArray($data, $no_quotes);
+				return $this->escapeList($data);
 			case is_object($data):
 				switch(true) {
 					case $data instanceof simpleToken:
-						return $this->prepareSimpleToken($data, $no_quotes);
+						return $this->prepareSimpleToken($data);
 					case $data instanceof logicCombinator:
 						return $this->prepareCombinator($data);
 					case $data instanceof comparison:
@@ -85,8 +85,8 @@ abstract class cloud_driver {
 	abstract public function escapeInteger($data);
 	abstract public function escapeFloat($data); // Helps out with number padding
 	
-	abstract public function escapeList($array); // A list of tokens (i.e.: x, y, z)
-	abstract public function escapeValueList($array); // A list of tokens (i.e.: "x", 2, 'z')
+	abstract public function escapeList($array, $commas = true, $escape = true); // A list of tokens (i.e.: x, y, z)
+	abstract public function escapeConditions($array); // A list of conditions (i.e.: foo AND bar AND zap)
 	/*
 		Escape Array Types:
 		- 0 :	Nondelimited

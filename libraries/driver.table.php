@@ -60,7 +60,7 @@ interface cloud_driver_table {
 		- Order
 		- Array ID (Expects column name)
 	*/
-	public function fetch($conditions, $return = 0, $params = '');
+	public function fetch($conditions, $return, $params = '');
 	public function fetch_exists($conditions);
 	
 	// Improve performance by sending write operations as a single transaction

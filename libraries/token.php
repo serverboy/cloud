@@ -6,7 +6,7 @@
  *
  * PHP version 5
  *
- * Copyright 2010 Matt Basta
+ * Copyright 2011 Matt Basta
  * 
  * @author     Matt Basta <matt@serverboy.net>
  * 
