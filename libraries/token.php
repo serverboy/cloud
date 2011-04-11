@@ -55,25 +55,33 @@ class cloud_token {
 		}
 		return $data[$name];
 	}
+	
 	public function getValue($name) {return $this->__get($name);}
+	
 	public function getBoolValue($name) {
 		$val = $this->getValue($field);
 		return !(empty($val) || $val === "0" || $val === 0);
 	}
+	
 	public function __set($name, $value) {
-		
-		$this->table->update_row(
-			$this->index,
+		$this->table->update(
+			array( $this->index_name => $this->index ),
 			array( $name => $value )
 		);
 		
 		$this->data[$name] = $value;
 	}
+	
 	public function setValues($params) {
-		// TODO : Optimize this and the above function to use fewer DB queries when running a large set of updated columns.
-		foreach($params as $param=>$value)
-			$this->__set($param, $value);
+		$this->table->update(
+			array( $this->index_name => $this->index ),
+			$params
+		);
+		
+		for($params as $key=>$value)
+			$this->data[$key] = $value;
 	}
+	
 	public function destroy() {
 		$this->table->delete(
 			array(
@@ -88,5 +96,4 @@ class cloud_token {
 		$this->index = null;
 		
 	}
-	
 }

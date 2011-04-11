@@ -38,6 +38,7 @@ class mysql_driver extends cloud_driver {
 		// Store the connection
 		$this->connection = $connection;
 	}
+	
 	public function close() {
 		@$this->connection->close();
 	}
@@ -182,7 +183,6 @@ class mysql_driver_table implements cloud_driver_table {
 	public function get_driver() {return $this->driver;}
 	
 	public function get_columns() {
-		
 		if($this->column_cache) return $this->column_cache;
 		
 		$query = $this->connection->query('DESCRIBE ' . $this->driver->prepareSimpleToken($this->name) . ';');
@@ -204,8 +204,8 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		$this->column_cache = $columns;
 		return $columns;
-		
 	}
+	
 	public function get_primary_column() {
 		if($this->primary_cache) return $this->primary_cache;
 
@@ -267,9 +267,8 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		$query .= ';';
 		$this->connection->query($query);
-		
-		
 	}
+	
 	public function delete($conditions, $limit = -1, $order = '') {
 		$driver = $this->driver;
 		
@@ -285,7 +284,6 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		$query .= ';';
 		$this->connection->query($query);
-		
 	}
 	
 	public function fetch($conditions, $return, $params = '') {

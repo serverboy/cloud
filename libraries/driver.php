@@ -88,13 +88,6 @@ abstract class cloud_driver {
 	abstract public function escapeFloat($data); // Helps out with number padding
 	
 	abstract public function escapeList($array, $commas = true, $escape = true); // A list of tokens (i.e.: x, y, z)
-	abstract public function escapeConditions($array); // A list of conditions (i.e.: foo AND bar AND zap)
-	/*
-		Escape Array Types:
-		- 0 :	Nondelimited
-		- 1 :	Delimited
-		- 2 :	Comparison
-	*/
 	
 	abstract public function prepareSimpleToken($token);
 	abstract public function prepareCombinator($combinator);
