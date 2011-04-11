@@ -646,7 +646,7 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 			true
 		);
 	}
-	public function delete($conditions = false, $limit = -1, $order = '') {
+	public function delete($conditions, $limit = -1, $order = '') {
 		
 		if(!$conditions)
 			return true;
@@ -711,9 +711,6 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 		- Array ID (Expects column name)
 	*/
 	public function fetch($conditions, $return, $params = '') {
-		$driver = self::secure('driver');
-		$name = self::secure('name');
-		
 		if(!is_array($params))
 			$params = array();
 		$columns = isset($params['columns']) ? $params['columns'] : '*';
@@ -724,29 +721,12 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 		
 		$is_array_col = is_array($columns);
 		
-		if($return == 8 && $is_array_col) {
-			// This is a FETCH_SINGLE command. What are you doing, silly dev?
-			$columns = $columns[0];
-			$is_array_col = false;
-			cloud_logging::warning("FETCH_SINGLE command passed mutiple parameters.");
-		}
+		if($return == 8 && $is_array_col)
+			throw new Exception("FETCH_SINGLE command passed mutiple parameters.");
 		
 		// Limit of 25 columns per query :(
-		if($is_array_col && count($columns) > 25 && !($return = 6 || $return == 7)) {
-			// TODO : Virtualize this away
-			$attempt = cloud_logging::unsafe_query(
-				'SimpleDB Fetch',
-				'Too many columns selected (25 maximum)',
-				array(
-					'Missing information',
-					'Abstraction automatically adjusts to `*`'
-				)
-			);
-			if($attempt) {
-				$columns = '*';
-			} else
-				return false;
-		}
+		if($is_array_col && count($columns) > 25 && !($return = 6 || $return == 7))
+			$columns = '*';
 		
 		if($return == 6 || $return == 7) { // Unloaded tokens don't need any values.
 			$columns = 'itemName()';
@@ -764,7 +744,7 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 						$value = cloud::_st($value);
 				}
 			}
-			$columns = $driver->escapeList($columns);
+			$columns = $this->driver->escapeList($columns);
 		}
 		
 		// Used as a limiter. Must be respected by result objects, as well
@@ -814,9 +794,7 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 				if(!$found) {
 					$conditions[] = new comparison($ov, 'is not null', null);
 				}
-				
 			}
-			
 		}
 		
 		// We segment off the suffix because we can use them a second time if a sub-query
@@ -825,9 +803,9 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 		// returned to grab the remaining results.
 		$suffix = '';
 		if(!empty($conditions))
-			$suffix = " where {$driver->escapeConditions($conditions)}";
+			$suffix = " where {$this->driver->escapeConditions($conditions)}";
 		if(!empty($order))
-			$suffix .= " order by {$driver->escapeList($order)}";
+			$suffix .= " order by {$this->driver->escapeList($order)}";
 		
 		if($return == 3 || $return == 5 || $return == 7 || $return == 8)
 			$limit = 1;
@@ -841,12 +819,12 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 		if($offset > 0 && $return != 1) {
 			$offset = (int)$offset;
 			
-			$subquery = "select count(*) from {$driver->prepareSimpleToken($name)}$suffix limit $offset";
+			$subquery = "select count(*) from {$this->driver->prepareSimpleToken($this->name)}$suffix limit $offset";
 			
 			while(true) {
 				$subparams = array(
 					'Action' => 'Select',
-					'DomainName' => $name,
+					'DomainName' => $this->name,
 					'SelectExpression' => $subquery
 				);
 				if(!empty($mandatory_next_token))
@@ -890,10 +868,9 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 			$suffix .= " limit $limit";
 		}
 		
-		
 		$params = array(
 			'Action' => 'Select',
-			'DomainName' => $name
+			'DomainName' => $this->name
 		);
 		
 		if(!empty($mandatory_next_token))
@@ -901,11 +878,11 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 		
 		
 		if($return == 1) { // Just a simple count
-			$query = "select count(*) from {$driver->prepareSimpleToken($name)}$suffix";
+			$query = "select count(*) from {$this->driver->prepareSimpleToken($this->name)}$suffix";
 			return $this->do_count($query);
 		}
 		
-		$query = "select $columns from {$driver->prepareSimpleToken($name)}$suffix";
+		$query = "select $columns from {$this->driver->prepareSimpleToken($this->name)}$suffix";
 		$params["SelectExpression"] = $query;
 		
 		if(	$return == FETCH_RESULT ||
@@ -921,24 +898,11 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 			);
 			if(!$result->SelectResult)
 				return false;
-			
 		}
 		
 		$output = false;
 		
 		switch($return) {
-			case FETCH_RESULT: // Result object
-				return false;
-				// TODO: Implement this output type.
-				/*
-				return new simpledb_return( array(
-					'driver' => $driver,
-					'table' => $this,
-					'expression' => $query,
-					'query' => $result,
-					'mandatory_token' => $mandatory_next_token
-				));
-				*/
 			//case FETCH_COUNT: // Row count is already handled above
 			case FETCH_ARRAY: // Array
 				$output = array();
@@ -957,8 +921,8 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 				$rows_rows = $rows['rows'];
 				foreach($rows_rows as $rname=>$row) {
 					$output[$row[$arrid]] = new cloud_token(
-						$driver,
 						$this,
+						SIMPLEDB_ROWID,
 						$row[$rname],
 						$return == 4 ? $row : ''
 					);
@@ -969,9 +933,8 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 				$row = $result->SelectResult->Item;
 				$row_name = (string)$row->Name;
 				return new cloud_token(
-					$driver,
 					$this,
-					$row_name,
+					SIMPLEDB_ROWID,
 					$this->get_array($row, $row_name)
 				);
 				break;
@@ -1011,7 +974,6 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 			foreach($result->SelectResult->Item as $item) {
 				$item_name = (string)($item->Name);
 				$rows[$item_name] = $this->get_array($item, $item_name);
-				
 			}
 			
 			if($result->SelectResult->NextToken) {
