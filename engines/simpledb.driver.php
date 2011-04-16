@@ -646,6 +646,7 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 			true
 		);
 	}
+	
 	public function delete($conditions, $limit = -1, $order = '') {
 		
 		if(!$conditions)
