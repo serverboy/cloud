@@ -257,10 +257,10 @@ class mysql_driver_table implements cloud_driver_table {
 		if($conditions !== true)
 			$query .= " WHERE " . $driver->escapeConditions($conditions);
 		
-		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
 		if($limit > -1) {
+			if(!empty($order))
+				$query .= " ORDER BY {$driver->escapeList($order)}";
 			$limit = (int)$limit;
 			$query .= " LIMIT $limit";
 		}
@@ -274,10 +274,9 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		$query = "DELETE FROM {$driver->prepareSimpleToken($this->name)} WHERE " . $driver->escapeConditions($conditions);
 		
-		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeList($order)}";
-		
 		if($limit > -1) {
+			if(!empty($order))
+				$query .= " ORDER BY {$driver->escapeList($order)}";
 			$limit = (int)$limit;
 			$query .= " LIMIT $limit";
 		}
@@ -298,6 +297,7 @@ class mysql_driver_table implements cloud_driver_table {
 		$limit = isset($params['limit']) ? (int)$params['limit'] : -1;
 		$offset = isset($params['offset']) ? (int)$params['offset'] : 0;
 		$order = isset($params['order']) ? $params['order'] : '';
+		$grouping = isset($params['grouping']) ? $params['grouping'] : '';
 		$arrid = isset($params['arrayid']) ? $params['arrayid'] : "id";
 		
 		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN) { // Unloaded tokens don't need any values.
@@ -325,6 +325,8 @@ class mysql_driver_table implements cloud_driver_table {
 		$query = "SELECT $columns FROM {$driver->prepareSimpleToken($this->name)}";
 		if(!empty($conditions))
 			$query .= " WHERE {$driver->escapeConditions($conditions)}";
+		if(!empty($grouping))
+			$query .= " GROUP BY {$driver->escapeArray($grouping, 1)}";
 		if(!empty($order))
 			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
