@@ -62,8 +62,13 @@ function _comp($x, $comparison, $y) {
 function _and() {
 	if(func_num_args() > 1)
 		return new logicCombinator(func_get_args(), 'AND');
-	else
-		return new logicCombinator(func_get_arg(0), 'AND');
+	else {
+		$arg = func_get_arg(0);
+		if(is_array($arg))
+			return new logicCombinator($arg, 'AND');
+		else
+			return $arg;
+	}
 }
 function _st($token) {
 	if($token instanceof simpleToken)
@@ -73,7 +78,12 @@ function _st($token) {
 function _or() {
 	if(func_num_args() > 1)
 		return new logicCombinator(func_get_args(), 'OR');
-	else
-		return new logicCombinator(func_get_arg(0), 'OR');
+	else {
+		$arg = func_get_arg(0);
+		if(is_array($arg))
+			return new logicCombinator($arg, 'OR');
+		else
+			return $arg;
+	}
 }
 

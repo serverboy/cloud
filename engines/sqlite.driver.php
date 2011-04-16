@@ -26,6 +26,8 @@
 
 define("NO_PDO", !class_exists('PDO'));
 define("NO_SQLITE_NATIVE", !function_exists('sqlite_open'));
+define('SQLITE_MAXLENGTH', "1000000000");
+define('SQLITE_ROWID', "_rowid_");
 
 interface sqlite_abstract {
 	
@@ -106,11 +108,11 @@ class sqlite_driver extends cloud_driver {
 	
 	// Table Functions
 	public function get_table_list() {
-		$result = $this->connection->query('SHOW TABLES;');
+		$result = $this->connection->query('SELECT name FROM sqlite_master WHERE type = "table";');
 		
 		$tab_out = array();
-		while($table = $result->fetch_array())
-			$tab_out[] = $table[0];
+		while($table = $this->connection->fetch_array($result))
+			$tab_out[] = $table["name"];
 		
 		return $tab_out;
 	}
@@ -197,7 +199,12 @@ class sqlite_driver extends cloud_driver {
 					foreach($terms as $term)
 						$build[] = 'NOT ' . $this->escape($term);
 					return implode(' AND ', $build);
-				case 'XOR':
+				case 'XOR': // SQLite has no explicit XOR operator, so we simulate it.
+					// TODO : Test this!
+					$first = cloud::_or($terms);
+					$last = cloud::_not(cloud::_and($terms));
+					return $this->prepareCombinator(cloud::_and($first, $last));
+					
 				case 'OR':
 				case 'AND':
 					foreach($terms as $term)
@@ -245,21 +252,12 @@ class sqlite_driver_table implements cloud_driver_table {
 	public function get_columns() {
 		if($this->column_cache) return $this->column_cache;
 		
-		$query = $this->connection->query('DESCRIBE ' . $this->driver->prepareSimpleToken($this->name) . ';');
+		$query = $this->connection->query('PRAGMA table_info(' . $this->driver->prepareSimpleToken($this->name) . ');');
 		
 		$columns = array();
-		while($result = $query->fetch_array()) {
-			$typelen = $result[1];
-			$parpos = strpos($typelen, '(');
-			if(strpos($typelen, '(') !== false) {
-				$type = substr($typelen, 0, $parpos);
-				$length = substr($typelen, $parpos + 1, strlen($typelen) - 2 - $parpos);
-			} else {
-				$type = $typelen;
-				$length = 0;
-			}
-			$column = new cloud_column($result[0], $type, $length, $result[3], $result[4], $result[5]);
-			$columns[$result[0]] = $column;
+		// TODO: Support indexes!
+		while($result = $this->connection->fetch_array($query)) {
+			$columns[] = new cloud_column($result["name"], $result["type"], SQLITE_MAX_LENGTH, "", $result["dflt_value"]);
 		}
 		
 		$this->column_cache = $columns;
@@ -267,26 +265,17 @@ class sqlite_driver_table implements cloud_driver_table {
 	}
 	
 	public function get_primary_column() {
-		if($this->primary_cache) return $this->primary_cache;
-
-		$columns = $this->get_columns();
-		foreach($columns as $column) {
-			if($column->key == 'PRI') {
-				$this->primary_cache = $column;
-				return $column;
-			}
-		}
+		return new cloud_column(
+			SQLITE_ROWID,
+			'text',
+			SQLITE_MAXLENGTH,
+			'PRI'
+		);
 	}
 	
 	public function get_length() {
-		$vana = ini_set('sqlite.trace_mode','Off');
-		
-		$temp = $this->connection->query("SELECT SQL_CALC_FOUND_ROWS * FROM {$this->driver->prepareSimpleToken($this->name)} LIMIT 1");
-		$result = $this->connection->query("SELECT FOUND_ROWS()");
-		$total = $result->fetch_row();
-		
-		ini_set('sqlite.trace_mode',$vana);
-		
+		$result = $this->connection->query("SELECT Count(*) FROM {$this->driver->prepareSimpleToken($this->name)}");
+		$total = $this->connection->fetch_row($result);
 		return $total[0];
 	}
 	
