@@ -29,16 +29,16 @@ define("NO_SQLITE_NATIVE", !function_exists('sqlite_open'));
 define('SQLITE_MAXLENGTH', "1000000000");
 define('SQLITE_ROWID', "_rowid_");
 
-interface sqlite_abstract {
+abstract class sqlite_abstract {
 	
 	private $connection;
 	
-	public function __construct($credentials);
-	public function query($sql, $async = false);
-	public function fetch_array($query);
-	public function fetch_single($query);
-	public function num_rows($query);
-	public function close();
+	abstract public function __construct($credentials);
+	abstract public function query($sql, $async = false);
+	abstract public function fetch_array($query);
+	abstract public function fetch_single($query);
+	abstract public function num_rows($query);
+	abstract public function close();
 	
 }
 
@@ -91,9 +91,9 @@ class sqlite_driver extends cloud_driver {
 		if(NO_PDO && NO_SQLITE_NATIVE)
 			throw new Exception("SQLite is not installed.");
 		
-		if(NO_PDO || (isset($credentials["force"]) && $credentials["force"] == "native"))
+		if(!NO_SQLITE_NATIVE || (isset($credentials["force"]) && $credentials["force"] == "native"))
 			$connection = new sqlite_abstract_native($credentials);
-		elseif(NO_SQLITE_NATIVE || (isset($credentials["force"]) && $credentials["force"] == "pdo"))
+		elseif(!NO_PDO || (isset($credentials["force"]) && $credentials["force"] == "pdo"))
 			$connection = new sqlite_abstract_pdo($credentials);
 		else
 			throw new Exception("SQLite is not installed.");
@@ -133,7 +133,7 @@ class sqlite_driver extends cloud_driver {
 			return $escape ? $this->escape($array) : $array;
 		
 		$final = array();
-		for($array as $key=>$item) {
+		foreach($array as $key=>$item) {
 			$build = $escape ? $this->escape($item) : $item;
 			if(is_string($key))
 				$final[] = $this->prepareSimpleToken($key) . " = " . $build;
@@ -148,7 +148,7 @@ class sqlite_driver extends cloud_driver {
 			return $this->escape($array); # We can force this for conditions
 		
 		$final = array();
-		for($array as $key=>$item) {
+		foreach($array as $key=>$item) {
 			if(is_object($item)) {
 				$final[] = $this->escape($item);
 				continue;
@@ -451,7 +451,7 @@ class sqlite_driver_table implements cloud_driver_table {
 		return $output;
 	}
 	
-	public function fetch_exists($conditions = '') {
+	public function fetch_exists($conditions) {
 		return $this->fetch(
 			$conditions,
 			FETCH_COUNT,
