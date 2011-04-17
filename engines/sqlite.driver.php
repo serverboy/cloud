@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Cloud MySQL Driver
+ * Cloud SQLite Driver
  * http://cloud.serverboy.net/
  *
  * PHP version 5
@@ -24,16 +24,79 @@
  * 
  */
 
-class mysql_driver extends cloud_driver {
+define("NO_PDO", !class_exists('PDO'));
+define("NO_SQLITE_NATIVE", !function_exists('sqlite_open'));
+define('SQLITE_MAXLENGTH', "1000000000");
+define('SQLITE_ROWID', "_rowid_");
+
+interface sqlite_abstract {
+	
+	private $connection;
+	
+	public function __construct($credentials);
+	public function query($sql, $async = false);
+	public function fetch_array($query);
+	public function fetch_single($query);
+	public function num_rows($query);
+	public function close();
+	
+}
+
+class sqlite_abstract_pdo {
+	
+	public function __construct($credentials) {
+		if(NO_PDO)
+			throw new Exception("PDO is not installed.");
+		$this->connection = new PDO('sqlite:' . $credentials["file"]);
+	}
+	public function query($sql, $async = false) {
+		if($async) {
+			return $this->connection->exec($sql);
+		} else {
+			return $this->connection->query($sql);
+		}
+	}
+	public function fetch_array($query) { return $query->fetch(PDO::FETCH_ASSOC); }
+	public function fetch_single($query) { return $query->fetchColumn(); }
+	public function num_rows($query) { return $query->numRows(); }
+	public function close() { $this->connection->close(); }
+	
+}
+
+class sqlite_abstract_native {
+	
+	public function __construct($credentials) {
+		if(NO_SQLITE_NATIVE)
+			throw new Exception("SQLite is not installed.");
+		$this->connection = sqlite_open($credentials["file"]);
+	}
+	public function query($sql, $async = false) {
+		if($async) {
+			return $this->connection->unbufferedQuery($sql);
+		} else {
+			return $this->connection->query($sql);
+		}
+	}
+	public function fetch_array($query) { return sqlite_fetch_array($query, SQLITE_ASSOC); }
+	public function fetch_single($query) { return sqlite_fetch_single($query); }
+	public function num_rows($query) { return sqlite_num_rows($query); }
+	public function close() { $this->connection->close(); }
+	
+}
+
+class sqlite_driver extends cloud_driver {
 	private $connection;
 	
 	public function init($credentials) {
-		// Connect
-		$connection = new mysqli($credentials['server'], $credentials['username'], $credentials['password']);
+		if(NO_PDO && NO_SQLITE_NATIVE)
+			throw new Exception("SQLite is not installed.");
 		
-		// Select the database
-		if(!empty($credentials['database']))
-			$connection->select_db($credentials['database']);
+		if(NO_PDO || (isset($credentials["force"]) && $credentials["force"] == "native"))
+			$connection = new sqlite_abstract_native($credentials);
+		elseif(NO_SQLITE_NATIVE || (isset($credentials["force"]) && $credentials["force"] == "pdo"))
+			$connection = new sqlite_abstract_pdo($credentials);
+		else
+			throw new Exception("SQLite is not installed.");
 		
 		// Store the connection
 		$this->connection = $connection;
@@ -45,23 +108,22 @@ class mysql_driver extends cloud_driver {
 	
 	// Table Functions
 	public function get_table_list() {
-		$result = $this->connection->query('SHOW TABLES;');
+		$result = $this->connection->query('SELECT name FROM sqlite_master WHERE type = "table";');
 		
 		$tab_out = array();
-		while($table = $result->fetch_array())
-			$tab_out[] = $table[0];
+		while($table = $this->connection->fetch_array($result))
+			$tab_out[] = $table["name"];
 		
 		return $tab_out;
 	}
 	
 	public function get_table($name) {
-		return new mysql_driver_table($this->connection, $this, $name);
+		return new sqlite_driver_table($this->connection, $this, $name);
 	}
-	
 	
 	public function escapeBool($data) {return $data ? 1 : 0;}
 	public function escapeString($data) {
-		return '"' . $this->connection->real_escape_string($data) . '"';
+		return '"' . str_replace("'", "''", $data) . '"';
 	}
 	public function escapeInteger($data) {return (int)$data;}
 	public function escapeFloat($data) {return (float)$data;}
@@ -71,7 +133,7 @@ class mysql_driver extends cloud_driver {
 			return $escape ? $this->escape($array) : $array;
 		
 		$final = array();
-		foreach($array as $key=>$item) {
+		for($array as $key=>$item) {
 			$build = $escape ? $this->escape($item) : $item;
 			if(is_string($key))
 				$final[] = $this->prepareSimpleToken($key) . " = " . $build;
@@ -86,7 +148,7 @@ class mysql_driver extends cloud_driver {
 			return $this->escape($array); # We can force this for conditions
 		
 		$final = array();
-		foreach($array as $key=>$item) {
+		for($array as $key=>$item) {
 			if(is_object($item)) {
 				$final[] = $this->escape($item);
 				continue;
@@ -137,7 +199,12 @@ class mysql_driver extends cloud_driver {
 					foreach($terms as $term)
 						$build[] = 'NOT ' . $this->escape($term);
 					return implode(' AND ', $build);
-				case 'XOR':
+				case 'XOR': // SQLite has no explicit XOR operator, so we simulate it.
+					// TODO : Test this!
+					$first = cloud::_or($terms);
+					$last = cloud::_not(cloud::_and($terms));
+					return $this->prepareCombinator(cloud::_and($first, $last));
+					
 				case 'OR':
 				case 'AND':
 					foreach($terms as $term)
@@ -163,7 +230,7 @@ class mysql_driver extends cloud_driver {
 }
 
 
-class mysql_driver_table implements cloud_driver_table {
+class sqlite_driver_table implements cloud_driver_table {
 	
 	private $connection;
 	private $driver;
@@ -185,21 +252,12 @@ class mysql_driver_table implements cloud_driver_table {
 	public function get_columns() {
 		if($this->column_cache) return $this->column_cache;
 		
-		$query = $this->connection->query('DESCRIBE ' . $this->driver->prepareSimpleToken($this->name) . ';');
+		$query = $this->connection->query('PRAGMA table_info(' . $this->driver->prepareSimpleToken($this->name) . ');');
 		
 		$columns = array();
-		while($result = $query->fetch_array()) {
-			$typelen = $result[1];
-			$parpos = strpos($typelen, '(');
-			if(strpos($typelen, '(') !== false) {
-				$type = substr($typelen, 0, $parpos);
-				$length = substr($typelen, $parpos + 1, strlen($typelen) - 2 - $parpos);
-			} else {
-				$type = $typelen;
-				$length = 0;
-			}
-			$column = new cloud_column($result[0], $type, $length, $result[3], $result[4], $result[5]);
-			$columns[$result[0]] = $column;
+		// TODO: Support indexes!
+		while($result = $this->connection->fetch_array($query)) {
+			$columns[] = new cloud_column($result["name"], $result["type"], SQLITE_MAX_LENGTH, "", $result["dflt_value"]);
 		}
 		
 		$this->column_cache = $columns;
@@ -207,26 +265,17 @@ class mysql_driver_table implements cloud_driver_table {
 	}
 	
 	public function get_primary_column() {
-		if($this->primary_cache) return $this->primary_cache;
-
-		$columns = $this->get_columns();
-		foreach($columns as $column) {
-			if($column->key == 'PRI') {
-				$this->primary_cache = $column;
-				return $column;
-			}
-		}
+		return new cloud_column(
+			SQLITE_ROWID,
+			'text',
+			SQLITE_MAXLENGTH,
+			'PRI'
+		);
 	}
 	
 	public function get_length() {
-		$vana = ini_set('mysql.trace_mode','Off');
-		
-		$temp = $this->connection->query("SELECT SQL_CALC_FOUND_ROWS * FROM {$this->driver->prepareSimpleToken($this->name)} LIMIT 1");
-		$result = $this->connection->query("SELECT FOUND_ROWS()");
-		$total = $result->fetch_row();
-		
-		ini_set('mysql.trace_mode',$vana);
-		
+		$result = $this->connection->query("SELECT Count(*) FROM {$this->driver->prepareSimpleToken($this->name)}");
+		$total = $this->connection->fetch_row($result);
 		return $total[0];
 	}
 	
@@ -256,11 +305,12 @@ class mysql_driver_table implements cloud_driver_table {
 		$query = "UPDATE {$driver->prepareSimpleToken($this->name)} SET " . $driver->escapeList($values);
 		if($conditions !== true)
 			$query .= " WHERE " . $driver->escapeConditions($conditions);
-		
-		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeList($order)}";
+		else
+			$query .= " WHERE 1";
 		
 		if($limit > -1) {
+			if(!empty($order))
+				$query .= " ORDER BY {$driver->escapeList($order)}";
 			$limit = (int)$limit;
 			$query .= " LIMIT $limit";
 		}
@@ -274,10 +324,9 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		$query = "DELETE FROM {$driver->prepareSimpleToken($this->name)} WHERE " . $driver->escapeConditions($conditions);
 		
-		if(!empty($order))
-			$query .= " ORDER BY {$driver->escapeList($order)}";
-		
 		if($limit > -1) {
+			if(!empty($order))
+				$query .= " ORDER BY {$driver->escapeList($order)}";
 			$limit = (int)$limit;
 			$query .= " LIMIT $limit";
 		}
@@ -289,19 +338,17 @@ class mysql_driver_table implements cloud_driver_table {
 	public function fetch($conditions, $return, $params = '') {
 		$driver = $this->driver;
 		
-		// Tell the driver what the primary key is so we can escape it out
-		$pcol = $this->get_primary_column();
-		
 		if(!is_array($params))
 			$params = array();
 		$columns = isset($params['columns']) ? $params['columns'] : '*';
 		$limit = isset($params['limit']) ? (int)$params['limit'] : -1;
 		$offset = isset($params['offset']) ? (int)$params['offset'] : 0;
 		$order = isset($params['order']) ? $params['order'] : '';
-		$arrid = isset($params['arrayid']) ? $params['arrayid'] : "id";
+		$grouping = isset($params['grouping']) ? $params['grouping'] : '';
+		$arrid = isset($params['arrayid']) ? $params['arrayid'] : SQLITE_ROWID;
 		
 		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN) { // Unloaded tokens don't need any values.
-			$columns = $driver->escape($pcol);
+			$columns = SQLITE_ROWID;
 		} else {
 			if(is_array($columns)) {
 				if($return == FETCH_SINGLE) {
@@ -313,8 +360,8 @@ class mysql_driver_table implements cloud_driver_table {
 					foreach($columns as $key => &$value)
 						if(is_string($value))
 							$value = cloud::_st($value);
-					if(!in_array($pcol->name, $columns))
-						$columns[] = cloud::_st($pcol->name);
+					if(!in_array(SQLITE_ROWID, $columns))
+						$columns[] = cloud::_st(SQLITE_ROWID);
 				}
 			} elseif(is_string($columns) && $columns != '*')
 				$columns = cloud::_st($columns);
@@ -325,6 +372,8 @@ class mysql_driver_table implements cloud_driver_table {
 		$query = "SELECT $columns FROM {$driver->prepareSimpleToken($this->name)}";
 		if(!empty($conditions))
 			$query .= " WHERE {$driver->escapeConditions($conditions)}";
+		if(!empty($grouping))
+			$query .= " GROUP BY {$driver->escapeArray($grouping, 1)}";
 		if(!empty($order))
 			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
@@ -333,7 +382,7 @@ class mysql_driver_table implements cloud_driver_table {
 			$limit = 1;
 		
 		if($limit > -1 || $offset > 0) {
-			if($limit == -1) // As per the MySQL docs, use a REALLY BIG NUMBER!
+			if($limit == -1) // As per the sqlite docs, use a REALLY BIG NUMBER!
 				$limit = '18446744073709551615';
 			
 			$query .= " LIMIT $limit";
@@ -353,57 +402,56 @@ class mysql_driver_table implements cloud_driver_table {
 		
 		// Nothing is returned
 		if($return > 1)
-			if($result === false || $result->num_rows == 0)
+			if($result === false || $this->connection->num_rows($query) == 0)
 				return false;
 		
 		switch($return) {
 			case FETCH_COUNT: // Row count
-				$output = $result->num_rows;
+				$output = $this->connection->num_rows($query);
 				break;
 			case FETCH_ARRAY: // Array
 				$output = array();
-				while($row = $result->fetch_array(MYSQLI_ASSOC))
+				while($row = $this->connection->fetch_array($query))
 					$output[$row[$arrid]] = $row;
 				break;
 			case FETCH_SINGLE_ARRAY: // Single Array
-				$output = $result->fetch_array(MYSQLI_ASSOC);
+				$output = $this->connection->fetch_array($query);
 				break;
 			case FETCH_TOKENS: // Tokens
 			case FETCH_UNLOADED_TOKENS: // Unloaded tokens
-				if($result->num_rows == 0)
+				if($this->connection->num_rows($query) == 0)
 					return false;
 				$output = array();
-				while($row = $result->fetch_array(MYSQLI_ASSOC)) {
+				while($row = $this->connection->fetch_array($query)) {
 					$output[$row[$arrid]] = new cloud_token(
 						$this,
-						$pcol->name,
-						$row[$pcol->name],
+						SQLITE_ROWID,
+						$row[SQLITE_ROWID],
 						$return == FETCH_TOKENS ? $row : ''
 					);
 				}
 				break;
 			case FETCH_SINGLE_TOKEN: // Single Token
 			case FETCH_SINGLE_UNLOADED_TOKEN: // Single Unloaded Token
-				if($result->num_rows == 0)
+				if($this->connection->num_rows($query) == 0)
 					return false;
-				$row = $result->fetch_array(MYSQLI_ASSOC);
+				$row = $this->connection->fetch_array($query);
 				$output = new cloud_token(
 					$this,
-					$pcol->name,
-					$row[$pcol->name],
+					SQLITE_ROWID,
+					$row[SQLITE_ROWID],
 					$return == FETCH_SINGLE_TOKEN ? $row : ''
 				);
 				break;
 			case FETCH_SINGLE: // Single Value
-				$output = $result->fetch_array();
-				$output = current($output);
+				$output = $this->connection->fetch_single($query);
 				break;
 		}
 		
 		return $output;
 	}
 	
-	public function fetch_exists($conditions) {
+	public function fetch_exists($conditions = '') {
 		return $this->fetch(
 			$conditions,
 			FETCH_COUNT,

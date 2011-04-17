@@ -27,8 +27,6 @@
 $location = dirname(__FILE__);
 define('CLOUD_PATH_PREFIX', $location . (strlen($location) > 1 ? '/' : ''));
 
-// Base class
-require(CLOUD_PATH_PREFIX . 'libraries/base.php');
 require(CLOUD_PATH_PREFIX . 'libraries/simpleObjects.php');
 // Universal DB Driver Interface
 require(CLOUD_PATH_PREFIX . 'libraries/driver.php');

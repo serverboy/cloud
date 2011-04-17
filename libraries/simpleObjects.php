@@ -99,7 +99,7 @@ class logicCombinator {
 
 // Order
 
-class listOrder extends cloud_base {
+class listOrder {
 	
 	private $variable;
 	private $order;
@@ -131,7 +131,7 @@ class simpleToken {
 	private $token;
 	
 	public function __construct($token) {
-		$this->token = $token
+		$this->token = $token;
 	}
 	
 	public function getToken() {return $this->token;}

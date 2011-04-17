@@ -78,7 +78,7 @@ class cloud_token {
 			$params
 		);
 		
-		for($params as $key=>$value)
+		foreach($params as $key=>$value)
 			$this->data[$key] = $value;
 	}
 	
