@@ -133,7 +133,7 @@ class simpledb_driver extends cloud_driver {
 	public function close() { return true; }
 	
 	// Table Functions
-	public function create_table($name) {
+	public function create_table($name, $columns) {
 		// TODO : Perhaps this function should be removed?
 		
 		// We can ignore $columns because columns are dynamically added.

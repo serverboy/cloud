@@ -107,6 +107,43 @@ class sqlite_driver extends cloud_driver {
 	}
 	
 	// Table Functions
+	public function create_table($name, $columns) {
+		$query = "CREATE TABLE {$this->prepareSimpleToken($name)} (";
+		$cols = array();
+		$indices = array();
+		foreach($columns as $column) {
+			$col = $column->name;
+			$col .= ' ' . strtoupper($column->type);
+			if($column->length !== false)
+				$col .= "({$column->length})";
+			if($column->def !== false)
+				$col .= ' DEFAULT ' . $this->escape($column->def);
+			if($column->extra !== false)
+				$col .= ' ' . $column->extra;
+			if($column->key !== false) {
+				switch($column->key) {
+					case 'PRI':
+						$col .= ' PRIMARY KEY';
+						break;
+					case 'UNI':
+						$col .= ' UNIQUE KEY';
+						break;
+					default:
+						if(isset($indices[$column->key]))
+							$indices[$column->key][] = $column->name;
+						else
+							$indices[$column->key] = array( $column->name );
+				}
+			}
+			$cols[] = $col;
+		}
+		foreach($indices as $name=>$index)
+			$cols[] = 'INDEX ' . $name . ' (' . implode(', ', $index) . ')';
+		$query .= implode(', ', $cols);
+		$query .= ");";
+		
+		$this->connection->query($query);
+	}
 	public function get_table_list() {
 		$result = $this->connection->query('SELECT name FROM sqlite_master WHERE type = "table";');
 		
@@ -316,7 +353,7 @@ class sqlite_driver_table implements cloud_driver_table {
 		}
 		
 		$query .= ';';
-		$this->connection->query($query);
+		$this->connection->query($query, true);
 	}
 	
 	public function delete($conditions, $limit = -1, $order = '') {
@@ -332,7 +369,7 @@ class sqlite_driver_table implements cloud_driver_table {
 		}
 		
 		$query .= ';';
-		$this->connection->query($query);
+		$this->connection->query($query, true);
 	}
 	
 	public function fetch($conditions, $return, $params = '') {
