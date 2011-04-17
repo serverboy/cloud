@@ -144,6 +144,7 @@ class sqlite_driver extends cloud_driver {
 		
 		$this->connection->query($query);
 	}
+	
 	public function get_table_list() {
 		$result = $this->connection->query('SELECT name FROM sqlite_master WHERE type = "table";');
 		

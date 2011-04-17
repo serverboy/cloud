@@ -108,7 +108,7 @@ class mysql_driver extends cloud_driver {
 			return $escape ? $this->escape($array) : $array;
 		
 		$final = array();
-		for($array as $key=>$item) {
+		foreach($array as $key=>$item) {
 			$build = $escape ? $this->escape($item) : $item;
 			if(is_string($key))
 				$final[] = $this->prepareSimpleToken($key) . " = " . $build;
@@ -123,7 +123,7 @@ class mysql_driver extends cloud_driver {
 			return $this->escape($array); # We can force this for conditions
 		
 		$final = array();
-		for($array as $key=>$item) {
+		foreach($array as $key=>$item) {
 			if(is_object($item)) {
 				$final[] = $this->escape($item);
 				continue;
@@ -442,7 +442,7 @@ class mysql_driver_table implements cloud_driver_table {
 		return $output;
 	}
 	
-	public function fetch_exists($conditions = '') {
+	public function fetch_exists($conditions) {
 		return $this->fetch(
 			$conditions,
 			FETCH_COUNT,
