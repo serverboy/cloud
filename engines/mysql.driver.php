@@ -53,8 +53,8 @@ class mysql_driver extends cloud_driver {
 			$col .= ' ' . strtoupper($column->type);
 			if($column->length !== false)
 				$col .= "({$column->length})";
-			if($column->def !== false)
-				$col .= ' DEFAULT ' . $this->escape($column->def);
+			if($column->_default !== false)
+				$col .= ' DEFAULT ' . $this->escape($column->_default);
 			if($column->extra !== false)
 				$col .= ' ' . $column->extra;
 			if($column->key !== false) {
@@ -78,6 +78,9 @@ class mysql_driver extends cloud_driver {
 			$cols[] = 'INDEX ' . $name . ' (' . implode(', ', $index) . ')';
 		$query .= implode(', ', $cols);
 		$query .= ");";
+		
+		if(defined("DEBUG"))
+			echo "$query\n";
 		
 		$this->connection->query($query);
 	}
@@ -217,12 +220,24 @@ class mysql_driver_table implements cloud_driver_table {
 			$this->primary_cache = $primary;
 	}
 	
+	public function drop() {
+		$this->connection->query("DROP TABLE " . $this->driver->escape(_st($this->name)));
+		
+		$this->connection = null;
+		$this->driver = null;
+		$this->name = null;
+		$this->primary_cache = null;
+		$this->column_cache = null;
+	}
+	
 	public function get_driver() {return $this->driver;}
 	
 	public function get_columns() {
 		if($this->column_cache) return $this->column_cache;
 		
 		$query = $this->connection->query('DESCRIBE ' . $this->driver->prepareSimpleToken($this->name) . ';');
+		if(!$query)
+			throw new Exception("Table does not exist");
 		
 		$columns = array();
 		while($result = $query->fetch_array()) {
@@ -274,7 +289,7 @@ class mysql_driver_table implements cloud_driver_table {
 		$values = array_values($values);
 		
 		foreach($keys as &$key)
-			$key = cloud::_st((string)$key);
+			$key = _st((string)$key);
 		
 		$query = "INSERT INTO {$driver->prepareSimpleToken($this->name)} ({$driver->escapeList($keys)}) VALUES ({$driver->escapeList($values)});";
 		$query = $this->connection->query($query);
@@ -335,9 +350,9 @@ class mysql_driver_table implements cloud_driver_table {
 		$offset = isset($params['offset']) ? (int)$params['offset'] : 0;
 		$order = isset($params['order']) ? $params['order'] : '';
 		$grouping = isset($params['grouping']) ? $params['grouping'] : '';
-		$arrid = isset($params['arrayid']) ? $params['arrayid'] : "id";
+		$arrid = isset($params['arrayid']) ? $params['arrayid'] : $this->get_primary_column()->name;
 		
-		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN) { // Unloaded tokens don't need any values.
+		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN || $return == FETCH_COUNT) { // Unloaded tokens don't need any values.
 			$columns = $driver->escape($pcol);
 		} else {
 			if(is_array($columns)) {
@@ -345,16 +360,25 @@ class mysql_driver_table implements cloud_driver_table {
 					if(count($columns) > 1)
 						$columns = $columns[0];
 					if(!($columns instanceof simpleToken))
-						$columns = cloud::_st($columns);
+						$columns = _st($columns);
 				} else {
+					if($return != FETCH_COUNT && $return != FETCH_SINGLE && $return != FETCH_SINGLE_ARRAY && $return != FETCH_SINGLE_TOKEN) {
+						$found_rowid = false;
+						foreach($columns as $col) {
+							if((is_string($col) && $col == $arrid) || ($col instanceof simpleToken && $col->getToken() == $arrid)) {
+								$found_rowid = true;
+								break;
+							}
+						}
+						if(!$found_rowid)
+							$columns[] = _st($arrid);
+					}
 					foreach($columns as $key => &$value)
 						if(is_string($value))
-							$value = cloud::_st($value);
-					if(!in_array($pcol->name, $columns))
-						$columns[] = cloud::_st($pcol->name);
+							$value = _st($value);
 				}
 			} elseif(is_string($columns) && $columns != '*')
-				$columns = cloud::_st($columns);
+				$columns = _st($columns);
 			if(!is_string($columns))
 				$columns = $driver->escapeList($columns);
 		}
@@ -363,7 +387,7 @@ class mysql_driver_table implements cloud_driver_table {
 		if(!empty($conditions))
 			$query .= " WHERE {$driver->escapeConditions($conditions)}";
 		if(!empty($grouping))
-			$query .= " GROUP BY {$driver->escapeArray($grouping, 1)}";
+			$query .= " GROUP BY {$driver->escapeList($grouping)}";
 		if(!empty($order))
 			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
@@ -446,7 +470,10 @@ class mysql_driver_table implements cloud_driver_table {
 		return $this->fetch(
 			$conditions,
 			FETCH_COUNT,
-			array('limit' => 1)
+			array(
+				'limit' => 1,
+				'columns' => $this->primary_cache ? $this->primary_cache->name : '*'
+			)
 		) > 0;
 	}
 	

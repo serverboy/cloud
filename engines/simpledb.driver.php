@@ -385,7 +385,7 @@ class simpledb_driver_table extends cloud_base implements cloud_driver_table {
 			$this->flush_write_transaction();
 	}
 	
-	public function destroy() {
+	public function drop() {
 		$params = array(
 			'Action' => 'DeleteDomain',
 			'DomainName' => $this->name

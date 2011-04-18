@@ -29,20 +29,18 @@ define("NO_SQLITE_NATIVE", !function_exists('sqlite_open'));
 define('SQLITE_MAXLENGTH', "1000000000");
 define('SQLITE_ROWID', "_rowid_");
 
-abstract class sqlite_abstract {
-	
-	private $connection;
-	
-	abstract public function __construct($credentials);
-	abstract public function query($sql, $async = false);
-	abstract public function fetch_array($query);
-	abstract public function fetch_single($query);
-	abstract public function num_rows($query);
-	abstract public function close();
-	
+interface sqlite_abstract {
+	public function __construct($credentials);
+	public function query($sql, $async = false);
+	public function fetch_array($query);
+	public function fetch_single($query);
+	public function num_rows($query);
+	public function close();
 }
 
 class sqlite_abstract_pdo {
+	
+	private $connection;
 	
 	public function __construct($credentials) {
 		if(NO_PDO)
@@ -50,6 +48,8 @@ class sqlite_abstract_pdo {
 		$this->connection = new PDO('sqlite:' . $credentials["file"]);
 	}
 	public function query($sql, $async = false) {
+		if(defined("DEBUG"))
+			echo $sql, " ", $async, "\n";
 		if($async) {
 			return $this->connection->exec($sql);
 		} else {
@@ -65,22 +65,28 @@ class sqlite_abstract_pdo {
 
 class sqlite_abstract_native {
 	
+	private $connection;
+	
 	public function __construct($credentials) {
 		if(NO_SQLITE_NATIVE)
 			throw new Exception("SQLite is not installed.");
-		$this->connection = sqlite_open($credentials["file"]);
+		$this->connection = sqlite_open($credentials["file"], 0666, $error);
+		if(defined("DEBUG"))
+			echo $error;
 	}
 	public function query($sql, $async = false) {
+		if(defined("DEBUG"))
+			echo $sql, " ", $async, "\n";
 		if($async) {
-			return $this->connection->unbufferedQuery($sql);
+			return sqlite_unbuffered_query($this->connection, $sql);
 		} else {
-			return $this->connection->query($sql);
+			return sqlite_query($this->connection, $sql);
 		}
 	}
 	public function fetch_array($query) { return sqlite_fetch_array($query, SQLITE_ASSOC); }
 	public function fetch_single($query) { return sqlite_fetch_single($query); }
 	public function num_rows($query) { return sqlite_num_rows($query); }
-	public function close() { $this->connection->close(); }
+	public function close() { sqlite_close($this->connection); }
 	
 }
 
@@ -113,11 +119,21 @@ class sqlite_driver extends cloud_driver {
 		$indices = array();
 		foreach($columns as $column) {
 			$col = $column->name;
-			$col .= ' ' . strtoupper($column->type);
-			if($column->length !== false)
-				$col .= "({$column->length})";
-			if($column->def !== false)
-				$col .= ' DEFAULT ' . $this->escape($column->def);
+			$type = strtoupper($column->type);
+			switch($type) {
+				case "VARCHAR":
+					$type = "TEXT";
+					break;
+				case "INT":
+				case "TINYINT":
+				case "MEDINT":
+				case "BIGINT":
+					$type = "NUMERIC";
+					break;
+			}
+			$col .= ' ' . $type;
+			if($column->_default !== false)
+				$col .= ' DEFAULT ' . $this->escape($column->_default);
 			if($column->extra !== false)
 				$col .= ' ' . $column->extra;
 			if($column->key !== false) {
@@ -142,7 +158,7 @@ class sqlite_driver extends cloud_driver {
 		$query .= implode(', ', $cols);
 		$query .= ");";
 		
-		$this->connection->query($query);
+		$this->connection->query($query, true);
 	}
 	
 	public function get_table_list() {
@@ -208,7 +224,7 @@ class sqlite_driver extends cloud_driver {
 		$tokentext = str_replace("\n", '', $tokentext);
 		$tokentext = str_replace("\r", '', $tokentext);
 		$tokentext = str_replace("\t", '', $tokentext);
-		$tokentext = '`' . str_replace('`', "'", $tokentext) . '`';
+		$tokentext = str_replace('`', '', $tokentext);
 		return $tokentext;
 	}
 	
@@ -239,9 +255,9 @@ class sqlite_driver extends cloud_driver {
 					return implode(' AND ', $build);
 				case 'XOR': // SQLite has no explicit XOR operator, so we simulate it.
 					// TODO : Test this!
-					$first = cloud::_or($terms);
-					$last = cloud::_not(cloud::_and($terms));
-					return $this->prepareCombinator(cloud::_and($first, $last));
+					$first = _or($terms);
+					$last = _not(_and($terms));
+					return $this->prepareCombinator(_and($first, $last));
 					
 				case 'OR':
 				case 'AND':
@@ -287,6 +303,16 @@ class sqlite_driver_table implements cloud_driver_table {
 	
 	public function get_driver() {return $this->driver;}
 	
+	public function drop() {
+		$this->connection->query("DROP TABLE " . $this->driver->escape(_st($this->name)));
+		
+		$this->connection = null;
+		$this->driver = null;
+		$this->name = null;
+		$this->primary_cache = null;
+		$this->column_cache = null;
+	}
+	
 	public function get_columns() {
 		if($this->column_cache) return $this->column_cache;
 		
@@ -324,7 +350,7 @@ class sqlite_driver_table implements cloud_driver_table {
 		$values = array_values($values);
 		
 		foreach($keys as &$key)
-			$key = cloud::_st((string)$key);
+			$key = _st((string)$key);
 		
 		$query = "INSERT INTO {$driver->prepareSimpleToken($this->name)} ({$driver->escapeList($keys)}) VALUES ({$driver->escapeList($values)});";
 		$query = $this->connection->query($query);
@@ -385,7 +411,7 @@ class sqlite_driver_table implements cloud_driver_table {
 		$grouping = isset($params['grouping']) ? $params['grouping'] : '';
 		$arrid = isset($params['arrayid']) ? $params['arrayid'] : SQLITE_ROWID;
 		
-		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN) { // Unloaded tokens don't need any values.
+		if($return == FETCH_UNLOADED_TOKENS || $return == FETCH_SINGLE_UNLOADED_TOKEN || $return == FETCH_COUNT) { // Unloaded tokens don't need any values.
 			$columns = SQLITE_ROWID;
 		} else {
 			if(is_array($columns)) {
@@ -393,16 +419,29 @@ class sqlite_driver_table implements cloud_driver_table {
 					if(count($columns) > 1)
 						$columns = $columns[0];
 					if(!($columns instanceof simpleToken))
-						$columns = cloud::_st($columns);
+						$columns = _st($columns);
 				} else {
-					foreach($columns as $key => &$value)
+					if($return != FETCH_COUNT && $return != FETCH_SINGLE && $return != FETCH_SINGLE_ARRAY && $return != FETCH_SINGLE_TOKEN) {
+						$found_rowid = false;
+						foreach($columns as $col) {
+							if((is_string($col) && $col == $arrid) || ($col instanceof simpleToken && $col->getToken() == $arrid)) {
+								$found_rowid = true;
+								break;
+							}
+						}
+						if(!$found_rowid)
+							$columns[] = _st($arrid);
+					}
+					foreach($columns as &$value)
 						if(is_string($value))
-							$value = cloud::_st($value);
-					if(!in_array(SQLITE_ROWID, $columns))
-						$columns[] = cloud::_st(SQLITE_ROWID);
+							$value = _st($value);
 				}
-			} elseif(is_string($columns) && $columns != '*')
-				$columns = cloud::_st($columns);
+			} elseif(is_string($columns)) {
+				if($columns != '*')
+					$columns = _st($columns);
+				else
+					$columns = array(_st($columns), _st(SQLITE_ROWID));
+			}
 			if(!is_string($columns))
 				$columns = $driver->escapeList($columns);
 		}
@@ -411,7 +450,7 @@ class sqlite_driver_table implements cloud_driver_table {
 		if(!empty($conditions))
 			$query .= " WHERE {$driver->escapeConditions($conditions)}";
 		if(!empty($grouping))
-			$query .= " GROUP BY {$driver->escapeArray($grouping, 1)}";
+			$query .= " GROUP BY {$driver->escapeList($grouping)}";
 		if(!empty($order))
 			$query .= " ORDER BY {$driver->escapeList($order)}";
 		
@@ -430,37 +469,32 @@ class sqlite_driver_table implements cloud_driver_table {
 		
 		$query .= ';';
 		
-		if(defined("DEBUG"))
-			echo $query, "\n";
-		
 		$result = $this->connection->query($query);
-		if(defined("DEBUG"))
-			echo $this->connection->error, "\n";
 		$output = false;
 		
 		// Nothing is returned
 		if($return > 1)
-			if($result === false || $this->connection->num_rows($query) == 0)
+			if($result === false || $this->connection->num_rows($result) == 0)
 				return false;
 		
 		switch($return) {
 			case FETCH_COUNT: // Row count
-				$output = $this->connection->num_rows($query);
+				$output = $this->connection->num_rows($result);
 				break;
 			case FETCH_ARRAY: // Array
 				$output = array();
-				while($row = $this->connection->fetch_array($query))
+				while($row = $this->connection->fetch_array($result))
 					$output[$row[$arrid]] = $row;
 				break;
 			case FETCH_SINGLE_ARRAY: // Single Array
-				$output = $this->connection->fetch_array($query);
+				$output = $this->connection->fetch_array($result);
 				break;
 			case FETCH_TOKENS: // Tokens
 			case FETCH_UNLOADED_TOKENS: // Unloaded tokens
-				if($this->connection->num_rows($query) == 0)
+				if($this->connection->num_rows($result) == 0)
 					return false;
 				$output = array();
-				while($row = $this->connection->fetch_array($query)) {
+				while($row = $this->connection->fetch_array($result)) {
 					$output[$row[$arrid]] = new cloud_token(
 						$this,
 						SQLITE_ROWID,
@@ -471,9 +505,9 @@ class sqlite_driver_table implements cloud_driver_table {
 				break;
 			case FETCH_SINGLE_TOKEN: // Single Token
 			case FETCH_SINGLE_UNLOADED_TOKEN: // Single Unloaded Token
-				if($this->connection->num_rows($query) == 0)
+				if($this->connection->num_rows($result) == 0)
 					return false;
-				$row = $this->connection->fetch_array($query);
+				$row = $this->connection->fetch_array($result);
 				$output = new cloud_token(
 					$this,
 					SQLITE_ROWID,
@@ -482,7 +516,7 @@ class sqlite_driver_table implements cloud_driver_table {
 				);
 				break;
 			case FETCH_SINGLE: // Single Value
-				$output = $this->connection->fetch_single($query);
+				$output = $this->connection->fetch_single($result);
 				break;
 		}
 		
@@ -493,7 +527,10 @@ class sqlite_driver_table implements cloud_driver_table {
 		return $this->fetch(
 			$conditions,
 			FETCH_COUNT,
-			array('limit' => 1)
+			array(
+				'limit' => 1,
+				'columns' => SQLITE_ROWID
+			)
 		) > 0;
 	}
 	
