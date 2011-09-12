@@ -317,6 +317,8 @@ class sqlite_driver_table implements cloud_driver_table {
 		if($this->column_cache) return $this->column_cache;
 		
 		$query = $this->connection->query('PRAGMA table_info(' . $this->driver->prepareSimpleToken($this->name) . ');');
+		if(!$query)
+			throw new Exception("Table does not exist");
 		
 		$columns = array();
 		// TODO: Support indexes!

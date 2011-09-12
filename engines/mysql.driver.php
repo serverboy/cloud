@@ -28,13 +28,14 @@ class mysql_driver extends cloud_driver {
 	private $connection;
 	
 	public function init($credentials) {
+
 		// Connect
 		$connection = new mysqli($credentials['server'], $credentials['username'], $credentials['password']);
 		
 		// Select the database
 		if(!empty($credentials['database']))
 			$connection->select_db($credentials['database']);
-		
+
 		// Store the connection
 		$this->connection = $connection;
 	}
@@ -51,6 +52,7 @@ class mysql_driver extends cloud_driver {
 		foreach($columns as $column) {
 			$col = $column->name;
 			$col .= ' ' . strtoupper($column->type);
+
 			if($column->length !== false)
 				$col .= "({$column->length})";
 			if($column->_default !== false)
@@ -84,6 +86,7 @@ class mysql_driver extends cloud_driver {
 		
 		$this->connection->query($query);
 	}
+
 	public function get_table_list() {
 		$result = $this->connection->query('SHOW TABLES;');
 		
@@ -97,7 +100,6 @@ class mysql_driver extends cloud_driver {
 	public function get_table($name) {
 		return new mysql_driver_table($this->connection, $this, $name);
 	}
-	
 	
 	public function escapeBool($data) {return $data ? 1 : 0;}
 	public function escapeString($data) {
@@ -220,6 +222,8 @@ class mysql_driver_table implements cloud_driver_table {
 			$this->primary_cache = $primary;
 	}
 	
+	public function get_driver() {return $this->driver;}
+	
 	public function drop() {
 		$this->connection->query("DROP TABLE " . $this->driver->escape(_st($this->name)));
 		
@@ -230,8 +234,6 @@ class mysql_driver_table implements cloud_driver_table {
 		$this->column_cache = null;
 	}
 	
-	public function get_driver() {return $this->driver;}
-	
 	public function get_columns() {
 		if($this->column_cache) return $this->column_cache;
 		
@@ -240,6 +242,7 @@ class mysql_driver_table implements cloud_driver_table {
 			throw new Exception("Table does not exist");
 		
 		$columns = array();
+
 		while($result = $query->fetch_array()) {
 			$typelen = $result[1];
 			$parpos = strpos($typelen, '(');
@@ -259,6 +262,7 @@ class mysql_driver_table implements cloud_driver_table {
 	}
 	
 	public function get_primary_column() {
+
 		if($this->primary_cache) return $this->primary_cache;
 
 		$columns = $this->get_columns();
@@ -299,7 +303,6 @@ class mysql_driver_table implements cloud_driver_table {
 	}
 	
 	public function update($conditions, $values, $limit = -1, $order = '') {
-		
 		if(empty($conditions))
 			return false;
 		
@@ -308,8 +311,7 @@ class mysql_driver_table implements cloud_driver_table {
 		$query = "UPDATE {$driver->prepareSimpleToken($this->name)} SET " . $driver->escapeList($values);
 		if($conditions !== true)
 			$query .= " WHERE " . $driver->escapeConditions($conditions);
-		
-		
+
 		if($limit > -1) {
 			if(!empty($order))
 				$query .= " ORDER BY {$driver->escapeList($order)}";
@@ -379,6 +381,7 @@ class mysql_driver_table implements cloud_driver_table {
 				}
 			} elseif(is_string($columns) && $columns != '*')
 				$columns = _st($columns);
+
 			if(!is_string($columns))
 				$columns = $driver->escapeList($columns);
 		}
