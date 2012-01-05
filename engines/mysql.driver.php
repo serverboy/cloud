@@ -323,6 +323,8 @@ class mysql_driver_table implements cloud_driver_table {
 		}
 
 		$query .= ';';
+        if(defined("DEBUG"))
+			echo "$query\n";
 		$this->connection->query($query);
 	}
 
