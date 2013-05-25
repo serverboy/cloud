@@ -88,8 +88,8 @@ class logicCombinator {
 		if(!isset($supported_logic[$logic]))
 			throw new Exception("Unsupported boolean operator supplied: " . $logic);
 		
-		$this->logic;
-		$this->terms;
+		$this->logic = $logic;
+		$this->terms = $terms;
 	}
 	
 	public function getLogic() {return $this->logic;}
